@@ -1,0 +1,10 @@
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+set(PROJECT_SET_NAME_TEST "test")
+set(PROJECT_SET_NAME_LIB "lib")
+set(PROJECT_SET_NAME_THIRD_PART	"third_part")
+set(PROJECT_SET_NAME_RUN "run")
+set(CMAKE_USE_RELATIVE_PATHS ON)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Setting the default build type with Debug")
+endif()
