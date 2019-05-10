@@ -32,10 +32,13 @@
 
 #define JKEY_CMD "cmd"
 #define JKEY_BODY "body"
+#define JKEY_STATUS "status"
 
 #define JVAL_CMD_LOGIN "login"
 #define JVAL_CMD_LOGOUT "logout"
 #define JVAL_CMD_PUNCH "punch"
+
+#define JVAL_CMD_TALK "talk"
 
 
 //////////////////////////////////////////////////////////////////////////

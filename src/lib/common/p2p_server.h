@@ -39,6 +39,8 @@ class P2PServer : public noncopyable,
   void OnSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const char *data, size_t size);
   void OnSocketError(AsyncPacketSocket::Ptr socket, StpError error);
 
+  void SendPuchResponse(AsyncPacketSocket::Ptr socket, ClientInfo &info);
+
  private:
   EventLoop::Ptr event_loop_;
   SignalHandler::Ptr signal_handler_;

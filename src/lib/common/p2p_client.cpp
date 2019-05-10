@@ -43,7 +43,9 @@ static void PrintVersion() {
 }
 
 P2PClient::P2PClient()
-    : server_port_(0), type_(NT_UNKNOWN) {
+    : server_port_(0),
+      type_(NT_UNKNOWN),
+      target_connected_(false) {
 
 }
 P2PClient::~P2PClient() {
@@ -118,6 +120,20 @@ bool P2PClient::Initialize(int argc, char *const *argv) {
     return false;
   }
 
+  server_timer_.reset(new EventTimer(event_loop_));
+  server_timer_->SignalTimer.connect(this, &P2PClient::OnServerTimer);
+  if (!server_timer_->Initialize(false)) {
+    LOG_ERROR("Initialize server timer failed!");
+    return false;
+  }
+
+  target_timer_.reset(new EventTimer(event_loop_));
+  target_timer_->SignalTimer.connect(this, &P2PClient::OnTargetTimer);
+  if (!target_timer_->Initialize(false)) {
+    LOG_ERROR("Initialize target timer failed!");
+    return false;
+  }
+
   return true;
 }
 void P2PClient::Run() {
@@ -153,7 +169,24 @@ void P2PClient::OnSignalEvent(SignalHandler::Ptr signal_hander, int signal) {
   }
 }
 void P2PClient::OnListenAccept(Listener::Ptr listener, evutil_socket_t fd, const InetAddr &addr) {
+  if(target_connected_) {
+    LOG_WARN("Target already connected!");
+    return;
+  }
 
+  LOG_INFO("Accept target connect!");
+  target_connected_ = true;
+
+  target_socket_.reset(new AsyncPacketSocket(event_loop_, fd, addr));
+  target_socket_->SignalRead.connect(this, &P2PClient::OnTargetSocketRead);
+  target_socket_->SignalError.connect(this, &P2PClient::OnTargetSocketError);
+  if (!target_socket_->Initialize()) {
+    LOG_ERROR("Initialize target socket failed!");
+    target_socket_.reset();
+    return;
+  }
+
+  SendTargetRequset();
 }
 void P2PClient::OnListenError(Listener::Ptr listener) {
 
@@ -173,8 +206,49 @@ void P2PClient::OnServerConnectError(Connector::Ptr connector) {
 
 }
 void P2PClient::OnServerSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const char *data, size_t size) {
-  if (flag == PKG_FLAG_RESPONSE) {
+  if (flag == PKG_FLAG_HEARTBEAT) {
+    server_timer_->Start(10 * 1000);
+  } else if (flag == PKG_FLAG_RESPONSE) {
+    Json::CharReaderBuilder builder;
+    Json::Value response;
+    Json::CharReader *reader = builder.newCharReader();
+    JSONCPP_STRING error_string;
+    if (!reader->parse(data, data + size, &response, &error_string)) {
+      LOG_ERROR_FMT("Parse response to json failed! error: %s", error_string.c_str());
+      return;
+    }
 
+    std::string cmd = response[JKEY_CMD].asString();
+    if (cmd == JVAL_CMD_LOGIN) {
+      int status = response[JKEY_STATUS].asInt();
+      if (status == 0) {
+        StartServerTimer();
+
+        if (!target_name_.empty()) {
+          StartPunchHole();
+        }
+      }
+    } else if (cmd == JVAL_CMD_PUNCH) {
+      int status = response[JKEY_STATUS].asInt();
+      if (status != 0) {
+        LOG_ERROR("Query target info failed!");
+        return;
+      }
+
+      Json::Value &body = response[JKEY_BODY];
+      std::string target_name = body["name"].asString();
+      int target_type = body["type"].asInt();
+      std::string target_host = body["host"].asString();
+      int target_port = body["port"].asInt();
+
+      InetAddr target_addr(target_host.c_str(), (uint16_t) target_port);
+
+      target_info_.name = target_name;
+      target_info_.type = target_type;
+      target_info_.addr = target_addr;
+
+      ConnectTarget();
+    }
   }
 }
 void P2PClient::OnServerSocketError(AsyncPacketSocket::Ptr socket, StpError error) {
@@ -189,4 +263,120 @@ void P2PClient::LoginServer() {
 
   server_socket_->SendJson(PKG_FLAG_REQUEST, data);
 }
+void P2PClient::StartServerTimer() {
+  server_socket_->Send(PKG_FLAG_HEARTBEAT, nullptr, 0);
+}
+void P2PClient::OnServerTimer(EventTimer::Ptr timer) {
+  StartServerTimer();
+}
+void P2PClient::StartPunchHole() {
+  Json::Value data;
+  data[JKEY_CMD] = JVAL_CMD_PUNCH;
+  Json::Value &body = data[JKEY_BODY];
+  body["name"] = name_;
+  body["target_name"] = target_name_;
+
+  server_socket_->SendJson(PKG_FLAG_REQUEST, data);
+}
+void P2PClient::ConnectTarget() {
+  target_connector_.reset(new Connector(event_loop_));
+  target_connector_->SignalConnected.connect(this, &P2PClient::OnTargetConnected);
+  target_connector_->SignalError.connect(this, &P2PClient::OnTargetConnectError);
+  if (!target_connector_->Start(target_info_.addr)) {
+  } else {
+    LOG_ERROR("Connect target failed! try again...");
+    target_timer_->Start(100);
+  }
+}
+void P2PClient::OnTargetConnected(Connector::Ptr connector, evutil_socket_t fd, const InetAddr &addr) {
+  LOG_INFO("Connect target succeed!");
+  target_connected_ = true;
+
+  target_socket_.reset(new AsyncPacketSocket(event_loop_, fd, addr));
+  target_socket_->SignalRead.connect(this, &P2PClient::OnTargetSocketRead);
+  target_socket_->SignalError.connect(this, &P2PClient::OnTargetSocketError);
+  if (!target_socket_->Initialize()) {
+    LOG_ERROR("Initialize target socket failed!");
+    target_socket_.reset();
+    return;
+  }
+
+  SendTargetRequset();
+}
+void P2PClient::OnTargetConnectError(Connector::Ptr connector) {
+  LOG_ERROR("Connect target failed! try again...");
+  target_timer_->Start(100);
+}
+void P2PClient::OnTargetTimer(EventTimer::Ptr timer) {
+  if(target_connected_) {
+    if(target_connector_) {
+      target_connector_.reset();
+    }
+
+    SendTargetRequset();
+  } else {
+    ConnectTarget();
+  }
+}
+void P2PClient::OnTargetSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const char *data, size_t size) {
+  if (flag == PKG_FLAG_REQUEST) {
+    Json::CharReaderBuilder builder;
+    Json::Value request;
+    Json::CharReader *reader = builder.newCharReader();
+    JSONCPP_STRING error_string;
+    if (!reader->parse(data, data + size, &request, &error_string)) {
+      LOG_ERROR_FMT("Parse request to json failed! error: %s", error_string.c_str());
+      return;
+    }
+
+    std::string cmd = request[JKEY_CMD].asString();
+    if (cmd == JVAL_CMD_TALK) {
+      Json::Value &body = request[JKEY_BODY];
+      LOG_INFO_FMT("[%s]: %s", target_info_.name.c_str(), body["message"].asCString());
+      SendTargetResponse();
+    }
+  } else if(flag == PKG_FLAG_RESPONSE) {
+    Json::CharReaderBuilder builder;
+    Json::Value response;
+    Json::CharReader *reader = builder.newCharReader();
+    JSONCPP_STRING error_string;
+    if (!reader->parse(data, data + size, &response, &error_string)) {
+      LOG_ERROR_FMT("Parse response to json failed! error: %s", error_string.c_str());
+      return;
+    }
+
+    std::string cmd = response[JKEY_CMD].asString();
+    if (cmd == JVAL_CMD_TALK) {
+      Json::Value &body = response[JKEY_BODY];
+      LOG_INFO_FMT("[%s]: %s", target_info_.name.c_str(), body["message"].asCString());
+
+      target_timer_->Start(2 * 1000);
+    }
+  }
+}
+void P2PClient::OnTargetSocketError(AsyncPacketSocket::Ptr socket, StpError error) {
+
+}
+void P2PClient::SendTargetRequset() {
+  if (!target_name_.empty()) {
+    Json::Value data;
+    data[JKEY_CMD] = JVAL_CMD_TALK;
+    Json::Value &body = data[JKEY_BODY];
+    body["message"] = "Nice to meet you!";
+
+    target_socket_->SendJson(PKG_FLAG_REQUEST, data);
+
+    LOG_INFO_FMT("[%s]: %s", name_.c_str(), body["message"].asCString());
+  }
+}
+void P2PClient::SendTargetResponse() {
+  Json::Value data;
+  data[JKEY_CMD] = JVAL_CMD_TALK;
+  Json::Value &body = data[JKEY_BODY];
+  body["message"] = "Nice to meet you, too!";
+
+  target_socket_->SendJson(PKG_FLAG_RESPONSE, data);
+  LOG_INFO_FMT("[%s]: %s", name_.c_str(), body["message"].asCString());
+}
+
 }

@@ -88,14 +88,14 @@ void P2PServer::OnListenError(Listener::Ptr listener) {
 
 void P2PServer::OnSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const char *data, size_t size) {
   if (flag == PKG_FLAG_HEARTBEAT) {
-
+    socket->Send(PKG_FLAG_HEARTBEAT, nullptr, 0);
   } else if (flag == PKG_FLAG_REQUEST) {
     Json::CharReaderBuilder builder;
     Json::Value request;
     Json::CharReader *reader = builder.newCharReader();
     JSONCPP_STRING error_string;
     if (!reader->parse(data, data + size, &request, &error_string)) {
-      LOG_ERROR_FMT("Parse body to json failed! error: %s", error_string.c_str());
+      LOG_ERROR_FMT("Parse request to json failed! error: %s", error_string.c_str());
       return;
     }
 
@@ -111,8 +111,8 @@ void P2PServer::OnSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const
       clients_.insert(std::make_pair(info.name, info));
 
       Json::Value response;
-      response["error_code"] = 0;
-      response["error_message"] = "Success!";
+      response[JKEY_CMD] = JVAL_CMD_LOGIN;
+      response[JKEY_STATUS] = 0;
 
       socket->SendJson(PKG_FLAG_RESPONSE, response);
     } else if (cmd == JVAL_CMD_LOGOUT) {
@@ -122,18 +122,45 @@ void P2PServer::OnSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const
       clients_.erase(name);
 
       Json::Value response;
-      response["error_code"] = 0;
-      response["error_message"] = "Success!";
+      response[JKEY_CMD] = JVAL_CMD_LOGOUT;
+      response[JKEY_STATUS] = 0;
 
       socket->SendJson(PKG_FLAG_RESPONSE, response);
     } else if (cmd == JVAL_CMD_PUNCH) {
+      Json::Value &body = request[JKEY_BODY];
+      std::string name = body["name"].asString();
+      std::string target_name = body["target_name"].asString();
 
+      auto iter = clients_.find(name);
+      auto target_iter = clients_.find(target_name);
+      if(iter == clients_.end() || target_iter == clients_.end()) {
+        Json::Value response;
+        response[JKEY_CMD] = JVAL_CMD_PUNCH;
+        response[JKEY_STATUS] = 1;
+
+        socket->SendJson(PKG_FLAG_RESPONSE, response);
+      } else {
+        SendPuchResponse(target_iter->second.socket, iter->second);
+        SendPuchResponse(iter->second.socket, target_iter->second);
+      }
     }
   }
 }
 
 void P2PServer::OnSocketError(AsyncPacketSocket::Ptr socket, StpError error) {
 
+}
+void P2PServer::SendPuchResponse(AsyncPacketSocket::Ptr socket, ClientInfo &info) {
+  Json::Value response;
+  response[JKEY_CMD] = JVAL_CMD_PUNCH;
+  response[JKEY_STATUS] = 0;
+  Json::Value &body = response[JKEY_BODY];
+  body["name"] = info.name;
+  body["type"] = info.type;
+  body["host"] = info.addr.GetIPString();
+  body["port"] = info.addr.GetPort();
+
+  socket->SendJson(PKG_FLAG_RESPONSE, response);
 }
 
 }

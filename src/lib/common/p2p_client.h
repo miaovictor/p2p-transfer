@@ -5,12 +5,19 @@
 #ifndef SRC_LIB_COMMON_P2P_CLIENT_H_
 #define SRC_LIB_COMMON_P2P_CLIENT_H_
 
+#include "common/event_timer.h"
 #include "common/signal_handler.h"
 #include "common/listener.h"
 #include "common/connector.h"
 #include "common/async_packet_socket.h"
 
 namespace vzc {
+
+struct TargetInfo {
+  std::string name;
+  int type;
+  InetAddr addr;
+};
 
 class P2PClient : public noncopyable,
                   public sigslot::has_slots<>,
@@ -35,8 +42,23 @@ class P2PClient : public noncopyable,
   void OnServerSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const char *data, size_t size);
   void OnServerSocketError(AsyncPacketSocket::Ptr socket, StpError error);
 
+  void OnServerTimer(EventTimer::Ptr timer);
+
+  void OnTargetConnected(Connector::Ptr connector, evutil_socket_t fd, const InetAddr& addr);
+  void OnTargetConnectError(Connector::Ptr connector);
+  void OnTargetSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const char *data, size_t size);
+  void OnTargetSocketError(AsyncPacketSocket::Ptr socket, StpError error);
+
+  void OnTargetTimer(EventTimer::Ptr timer);
+
  private:
   void LoginServer();
+  void StartServerTimer();
+  void StartPunchHole();
+  void ConnectTarget();
+
+  void SendTargetRequset();
+  void SendTargetResponse();
 
  private:
   EventLoop::Ptr event_loop_;
@@ -44,6 +66,14 @@ class P2PClient : public noncopyable,
   Listener::Ptr listener_;
   Connector::Ptr server_connector_;
   AsyncPacketSocket::Ptr server_socket_;
+  EventTimer::Ptr server_timer_;
+
+  TargetInfo target_info_;
+  EventTimer::Ptr target_timer_;
+  Connector::Ptr target_connector_;
+  AsyncPacketSocket::Ptr target_socket_;
+  bool target_connected_;
+//  std::set<AsyncPacketSocket::Ptr> target_sockets_;
 
  private:
   std::string name_;
