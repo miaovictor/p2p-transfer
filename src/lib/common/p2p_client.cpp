@@ -329,10 +329,10 @@ void P2PClient::ConnectTarget() {
     goto NEXT;
   }
 
-//  if (-1 == bind(fd, (const struct sockaddr *) local_addr_.GetAddr(), addr_len)) {
-//    LOG_ERROR("Bind local address failed!");
-//    goto NEXT;
-//  }
+  if (-1 == bind(fd, (const struct sockaddr *) local_addr_.GetAddr(), addr_len)) {
+    LOG_ERROR("Bind local address failed!");
+    goto NEXT;
+  }
 
   if (-1 == connect(fd, (const struct sockaddr *) target_info_.addr.GetAddr(), addr_len)) {
     LOG_ERROR_FMT("Connect target failed! errno: %d", errno);
