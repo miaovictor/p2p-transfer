@@ -29,6 +29,7 @@ AsyncPacketSocket::AsyncPacketSocket(EventLoop::Ptr event_loop, evutil_socket_t 
 }
 
 AsyncPacketSocket::~AsyncPacketSocket() {
+  LOG_WARN("Destory AsyncPacketSocket");
   UnInitialize();
 }
 
@@ -86,9 +87,9 @@ bool AsyncPacketSocket::Send(uint16_t flag, const char *data, size_t size) {
   header.size = htonl(size);
 
   DataBuffer::Ptr buffer = buffer_pool_->TakeDataBuffer();
-  memcpy(buffer->data_, &header, sizeof(PacketHeader));
+  buffer->WriteBytes((const char*)&header, sizeof(PacketHeader));
   if(size > 0) {
-    memcpy(buffer->data_ + sizeof(PacketHeader), data, size);
+    buffer->WriteBytes(data, size);
   }
   send_buffers_.push_back(buffer);
 
@@ -162,7 +163,7 @@ void AsyncPacketSocket::TrySend() {
     DataBuffer::Ptr buffer = send_buffers_.front();
 
     ssize_t ret = ::send(fd_, buffer->data_, buffer->size_, 0);
-    if (ret > 0) {
+    if (ret >= 0) {
       if (ret == buffer->size_) {
         // 此buffer发送完毕
         send_buffers_.pop_front();
@@ -172,7 +173,7 @@ void AsyncPacketSocket::TrySend() {
         buffer->size_ = buffer->size_ - ret;
       }
     } else {
-      int e = evutil_socket_geterror(fd);
+      int e = evutil_socket_geterror(fd_);
       if (e == EINTR || e == EAGAIN) {
         if (write_event_ && event_pending(write_event_, EV_WRITE, nullptr) == 0) {
           if (-1 == event_add(write_event_, nullptr)) {

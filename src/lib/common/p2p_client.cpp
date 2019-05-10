@@ -6,6 +6,7 @@
 #include <csignal>
 #include <getopt.h>
 #include <iostream>
+#include <unistd.h>
 
 #define VERSION "1.0.0"
 
@@ -56,7 +57,7 @@ bool P2PClient::Initialize(int argc, char *const *argv) {
   int opt;
   bool log = false;
   while (true) {
-    opt = getopt_long(argc, argv, "?n:h:p:t:lv", long_options, &idx);
+    opt = getopt_long(argc, argv, "?n:t:h:p:c:lv", long_options, &idx);
     if (opt == -1) break;
     switch (opt) {
       case 'n':name_ = optarg;
@@ -104,7 +105,7 @@ bool P2PClient::Initialize(int argc, char *const *argv) {
   listener_.reset(new Listener(event_loop_));
   listener_->SignalAccept.connect(this, &P2PClient::OnListenAccept);
   listener_->SignalError.connect(this, &P2PClient::OnListenError);
-  if (!listener_->Start(InetAddr("0.0.0.0", 7001))) {
+  if (listener_->Start(InetAddr("0.0.0.0", 7001))) {
     InetAddr listen_addr = listener_->GetAddr();
     LOG_INFO_FMT("Listen server on %s!", listen_addr.ToString().c_str());
   } else {
@@ -115,7 +116,7 @@ bool P2PClient::Initialize(int argc, char *const *argv) {
   server_connector_.reset(new Connector(event_loop_));
   server_connector_->SignalConnected.connect(this, &P2PClient::OnServerConnected);
   server_connector_->SignalError.connect(this, &P2PClient::OnServerConnectError);
-  if (!server_connector_->Start(InetAddr("47.105.47.51", 7000))) {
+  if (!server_connector_->Start(InetAddr(server_host_.c_str(), server_port_))) {
     LOG_ERROR("Connect server failed!");
     return false;
   }
@@ -169,29 +170,33 @@ void P2PClient::OnSignalEvent(SignalHandler::Ptr signal_hander, int signal) {
   }
 }
 void P2PClient::OnListenAccept(Listener::Ptr listener, evutil_socket_t fd, const InetAddr &addr) {
-  if(target_connected_) {
-    LOG_WARN("Target already connected!");
-    return;
-  }
-
-  LOG_INFO("Accept target connect!");
-  target_connected_ = true;
-
-  target_socket_.reset(new AsyncPacketSocket(event_loop_, fd, addr));
-  target_socket_->SignalRead.connect(this, &P2PClient::OnTargetSocketRead);
-  target_socket_->SignalError.connect(this, &P2PClient::OnTargetSocketError);
-  if (!target_socket_->Initialize()) {
-    LOG_ERROR("Initialize target socket failed!");
-    target_socket_.reset();
-    return;
-  }
-
-  SendTargetRequset();
+//  if(target_connected_) {
+//    LOG_WARN("Target already connected!");
+//    return;
+//  }
+//
+//  LOG_INFO("Accept target connect!");
+//  target_connected_ = true;
+//
+//  target_socket_.reset(new AsyncPacketSocket(event_loop_, fd, addr));
+//  target_socket_->SignalRead.connect(this, &P2PClient::OnTargetSocketRead);
+//  target_socket_->SignalError.connect(this, &P2PClient::OnTargetSocketError);
+//  if (!target_socket_->Initialize()) {
+//    LOG_ERROR("Initialize target socket failed!");
+//    target_socket_.reset();
+//    return;
+//  }
+//
+//  SendTargetRequset();
+  LOG_INFO("Client listener callback!");
 }
 void P2PClient::OnListenError(Listener::Ptr listener) {
 
 }
 void P2PClient::OnServerConnected(Connector::Ptr connector, evutil_socket_t fd, const InetAddr &addr) {
+  LOG_INFO("Connect server succeed!");
+  server_connector_.reset();
+
   server_socket_.reset(new AsyncPacketSocket(event_loop_, fd, addr));
   server_socket_->SignalRead.connect(this, &P2PClient::OnServerSocketRead);
   server_socket_->SignalError.connect(this, &P2PClient::OnServerSocketError);
@@ -203,7 +208,7 @@ void P2PClient::OnServerConnected(Connector::Ptr connector, evutil_socket_t fd, 
   LoginServer();
 }
 void P2PClient::OnServerConnectError(Connector::Ptr connector) {
-
+  LOG_ERROR("Server connect error!");
 }
 void P2PClient::OnServerSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const char *data, size_t size) {
   if (flag == PKG_FLAG_HEARTBEAT) {
@@ -223,6 +228,8 @@ void P2PClient::OnServerSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag,
       int status = response[JKEY_STATUS].asInt();
       if (status == 0) {
         StartServerTimer();
+
+        LOG_INFO("Login server succeed!");
 
         if (!target_name_.empty()) {
           StartPunchHole();
@@ -252,7 +259,7 @@ void P2PClient::OnServerSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag,
   }
 }
 void P2PClient::OnServerSocketError(AsyncPacketSocket::Ptr socket, StpError error) {
-
+  LOG_ERROR_FMT("Server socket error! %d", error);
 }
 void P2PClient::LoginServer() {
   Json::Value data;
@@ -279,14 +286,81 @@ void P2PClient::StartPunchHole() {
   server_socket_->SendJson(PKG_FLAG_REQUEST, data);
 }
 void P2PClient::ConnectTarget() {
-  target_connector_.reset(new Connector(event_loop_));
-  target_connector_->SignalConnected.connect(this, &P2PClient::OnTargetConnected);
-  target_connector_->SignalError.connect(this, &P2PClient::OnTargetConnectError);
-  if (!target_connector_->Start(target_info_.addr)) {
-  } else {
-    LOG_ERROR("Connect target failed! try again...");
-    target_timer_->Start(100);
+//  target_connector_.reset(new Connector(event_loop_));
+//  target_connector_->SignalConnected.connect(this, &P2PClient::OnTargetConnected);
+//  target_connector_->SignalError.connect(this, &P2PClient::OnTargetConnectError);
+//  if (!target_connector_->Start(target_info_.addr)) {
+//  } else {
+//    LOG_ERROR("Connect target failed! try again...");
+//    target_timer_->Start(100);
+//  }
+
+  const struct sockaddr_in *target_addr = target_info_.addr.GetAddr();
+  struct sockaddr_in local_addr;
+  socklen_t addr_len = sizeof(local_addr);
+
+  memset(&local_addr, 0, addr_len);
+  local_addr.sin_family = AF_INET;
+  local_addr.sin_addr.s_addr = 0;
+  local_addr.sin_port = htons(7001);
+
+  int fd = INVALID_SOCKET;
+  int enable = 1;
+
+  LOG_ERROR("Try connect target...");
+
+  fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (INVALID_SOCKET == fd) {
+    LOG_ERROR("Create socket failed!");
+    goto NEXT;
   }
+
+
+  if (-1 == setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable))) {
+    LOG_ERROR("Set SO_REUSEADDR failed!");
+    goto NEXT;
+  }
+
+  if (-1 == setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(enable))) {
+    LOG_ERROR("Set SO_REUSEPORT failed!");
+    goto NEXT;
+  }
+
+  if (-1 == setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enable, sizeof(enable))) {
+    LOG_ERROR("Set SO_KEEPALIVE failed!");
+    goto NEXT;
+  }
+
+  if (-1 == bind(fd, (const struct sockaddr *) &local_addr, addr_len)) {
+    LOG_ERROR("Bind local address failed!");
+    goto NEXT;
+  }
+
+  if (-1 == connect(fd, (const struct sockaddr *) target_addr, addr_len)) {
+    LOG_ERROR("Connect target failed!");
+    goto NEXT;
+  }
+
+  target_connected_ = true;
+
+  target_socket_.reset(new AsyncPacketSocket(event_loop_, fd, target_info_.addr));
+  target_socket_->SignalRead.connect(this, &P2PClient::OnTargetSocketRead);
+  target_socket_->SignalError.connect(this, &P2PClient::OnTargetSocketError);
+  if (!target_socket_->Initialize()) {
+    LOG_ERROR("Initialize target socket failed!");
+    target_socket_.reset();
+    return;
+  }
+
+  SendTargetRequset();
+  return;
+
+NEXT:
+  if (fd != INVALID_SOCKET) {
+    close(fd);
+  }
+
+  target_timer_->Start(1000);
 }
 void P2PClient::OnTargetConnected(Connector::Ptr connector, evutil_socket_t fd, const InetAddr &addr) {
   LOG_INFO("Connect target succeed!");
@@ -308,13 +382,7 @@ void P2PClient::OnTargetConnectError(Connector::Ptr connector) {
   target_timer_->Start(100);
 }
 void P2PClient::OnTargetTimer(EventTimer::Ptr timer) {
-  if(target_connected_) {
-    if(target_connector_) {
-      target_connector_.reset();
-    }
-
-    SendTargetRequset();
-  } else {
+  if (!target_connected_) {
     ConnectTarget();
   }
 }
@@ -335,7 +403,7 @@ void P2PClient::OnTargetSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag,
       LOG_INFO_FMT("[%s]: %s", target_info_.name.c_str(), body["message"].asCString());
       SendTargetResponse();
     }
-  } else if(flag == PKG_FLAG_RESPONSE) {
+  } else if (flag == PKG_FLAG_RESPONSE) {
     Json::CharReaderBuilder builder;
     Json::Value response;
     Json::CharReader *reader = builder.newCharReader();

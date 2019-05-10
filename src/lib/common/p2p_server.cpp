@@ -33,7 +33,7 @@ bool P2PServer::Initialize(int argc, char *const *argv) {
   listener_.reset(new Listener(event_loop_));
   listener_->SignalAccept.connect(this, &P2PServer::OnListenAccept);
   listener_->SignalError.connect(this, &P2PServer::OnListenError);
-  if (!listener_->Start(InetAddr("0.0.0.0", 7000))) {
+  if (listener_->Start(InetAddr("0.0.0.0", 7000))) {
     InetAddr listen_addr = listener_->GetAddr();
     LOG_INFO_FMT("Listen server on %s!", listen_addr.ToString().c_str());
   } else {
@@ -107,8 +107,11 @@ void P2PServer::OnSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const
       info.addr = socket->GetAddr();
       info.name = body["name"].asString();
       info.type = body["type"].asInt();
+      info.socket = socket;
 
       clients_.insert(std::make_pair(info.name, info));
+
+      LOG_INFO_FMT("Client [%s] login!", info.name.c_str());
 
       Json::Value response;
       response[JKEY_CMD] = JVAL_CMD_LOGIN;
@@ -148,7 +151,7 @@ void P2PServer::OnSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const
 }
 
 void P2PServer::OnSocketError(AsyncPacketSocket::Ptr socket, StpError error) {
-
+  LOG_ERROR_FMT("Socket error! %d", error);
 }
 void P2PServer::SendPuchResponse(AsyncPacketSocket::Ptr socket, ClientInfo &info) {
   Json::Value response;
