@@ -336,9 +336,9 @@ void P2PClient::ConnectTarget() {
 
   if (-1 == connect(fd, (const struct sockaddr *) target_info_.addr.GetAddr(), addr_len)) {
     LOG_ERROR_FMT("Connect target failed! errno: %d", errno);
-    if (errno != ETIMEDOUT) {
-      sleep(20);
-    }
+//    if (errno != ETIMEDOUT) {
+//      sleep(1);
+//    }
     goto NEXT;
   }
 
