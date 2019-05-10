@@ -52,6 +52,7 @@ class P2PClient : public noncopyable,
   void OnTargetTimer(EventTimer::Ptr timer);
 
  private:
+  bool ConnectServer(const InetAddr &server_addr);
   void LoginServer();
   void StartServerTimer();
   void StartPunchHole();
@@ -64,14 +65,14 @@ class P2PClient : public noncopyable,
   EventLoop::Ptr event_loop_;
   SignalHandler::Ptr signal_handler_;
   Listener::Ptr listener_;
-  Connector::Ptr server_connector_;
+//  Connector::Ptr server_connector_;
   AsyncPacketSocket::Ptr server_socket_;
   EventTimer::Ptr server_timer_;
 
   InetAddr local_addr_;
   TargetInfo target_info_;
   EventTimer::Ptr target_timer_;
-  Connector::Ptr target_connector_;
+//  Connector::Ptr target_connector_;
   AsyncPacketSocket::Ptr target_socket_;
   bool target_connected_;
 //  std::set<AsyncPacketSocket::Ptr> target_sockets_;
