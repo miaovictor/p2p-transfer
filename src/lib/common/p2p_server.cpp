@@ -111,7 +111,7 @@ void P2PServer::OnSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const
 
       clients_.insert(std::make_pair(info.name, info));
 
-      LOG_INFO_FMT("Client [%s] login!", info.name.c_str());
+      LOG_INFO_FMT("Client [%s] login! %s", info.name.c_str(), info.addr.ToString().c_str());
 
       Json::Value response;
       response[JKEY_CMD] = JVAL_CMD_LOGIN;

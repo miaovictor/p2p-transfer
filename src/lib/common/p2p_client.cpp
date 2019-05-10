@@ -309,7 +309,6 @@ void P2PClient::ConnectTarget() {
     goto NEXT;
   }
 
-
   if (-1 == setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable))) {
     LOG_ERROR("Set SO_REUSEADDR failed!");
     goto NEXT;
