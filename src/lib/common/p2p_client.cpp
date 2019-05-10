@@ -387,6 +387,8 @@ void P2PClient::OnTargetConnectError(Connector::Ptr connector) {
 void P2PClient::OnTargetTimer(EventTimer::Ptr timer) {
   if (!target_connected_) {
     ConnectTarget();
+  } else {
+    SendTargetRequset();
   }
 }
 void P2PClient::OnTargetSocketRead(AsyncPacketSocket::Ptr socket, uint16_t flag, const char *data, size_t size) {
