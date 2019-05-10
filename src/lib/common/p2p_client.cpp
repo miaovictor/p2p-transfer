@@ -106,8 +106,7 @@ bool P2PClient::Initialize(int argc, char *const *argv) {
   listener_.reset(new Listener(event_loop_));
   listener_->SignalAccept.connect(this, &P2PClient::OnListenAccept);
   listener_->SignalError.connect(this, &P2PClient::OnListenError);
-
-  if (listener_->Start(local_addr_)) {
+  if (listener_->Start(local_addr_, -1)) {
     InetAddr listen_addr = listener_->GetAddr();
     LOG_INFO_FMT("Listen server on %s!", listen_addr.ToString().c_str());
   } else {
@@ -335,6 +334,8 @@ void P2PClient::ConnectTarget() {
     LOG_ERROR("Connect target failed!");
     goto NEXT;
   }
+
+  LOG_INFO("Punch succeed!");
 
   target_connected_ = true;
 

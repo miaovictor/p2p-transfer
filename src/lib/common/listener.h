@@ -24,7 +24,7 @@ class Listener : public noncopyable,
   sigslot::signal1<Listener::Ptr> SignalError;
 
  public:
-  bool Start(const InetAddr& addr);
+  bool Start(const InetAddr& addr, int backlog = 10);
 
   const InetAddr& GetAddr() const;
 

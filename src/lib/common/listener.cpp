@@ -18,14 +18,14 @@ Listener::~Listener() {
   }
 }
 
-bool Listener::Start(const InetAddr& addr) {
+bool Listener::Start(const InetAddr& addr, int backlog) {
   int flags = LEV_OPT_CLOSE_ON_FREE | LEV_OPT_CLOSE_ON_EXEC | LEV_OPT_REUSEABLE;
   listener_ = evconnlistener_new_bind(
       event_loop_->base(),
       AcceptCallback,
       this,
       flags,
-      10,
+      backlog,
       (sockaddr *) addr.GetAddr(),
       sizeof(sockaddr));
   if (!listener_) {
@@ -36,6 +36,26 @@ bool Listener::Start(const InetAddr& addr) {
   evconnlistener_set_error_cb(listener_, ErrorCallback);
 
   fd_ = evconnlistener_get_fd(listener_);
+
+  if(backlog == -1) {
+    int enable = 1;
+    if (-1 == setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable))) {
+      LOG_ERROR("Set SO_REUSEADDR failed!");
+      return false;
+    }
+
+    if (-1 == setsockopt(fd_, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(enable))) {
+      LOG_ERROR("Set SO_REUSEPORT failed!");
+      return false;
+    }
+
+    if (-1 == setsockopt(fd_, SOL_SOCKET, SO_KEEPALIVE, &enable, sizeof(enable))) {
+      LOG_ERROR("Set SO_KEEPALIVE failed!");
+      return false;
+    }
+  }
+
+
   struct sockaddr_in bindaddr;
   socklen_t len = sizeof(bindaddr);
   if(0 != ::getsockname(fd_, (sockaddr*)&bindaddr, &len)) {
