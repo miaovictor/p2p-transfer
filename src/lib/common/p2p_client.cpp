@@ -477,10 +477,10 @@ bool P2PClient::ConnectServer(const InetAddr &server_addr) {
     return false;
   }
 
-//  if (-1 == bind(fd, (const struct sockaddr *) local_addr_.GetAddr(), addr_len)) {
-//    LOG_ERROR("Bind local address failed!");
-//    return false;
-//  }
+  if (-1 == bind(fd, (const struct sockaddr *) local_addr_.GetAddr(), addr_len)) {
+    LOG_ERROR("Bind local address failed!");
+    return false;
+  }
 
   if (-1 == connect(fd, (const struct sockaddr *) server_addr.GetAddr(), addr_len)) {
     LOG_ERROR_FMT("Connect server failed! errno: %d", errno);
