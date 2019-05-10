@@ -68,6 +68,7 @@ class P2PClient : public noncopyable,
   AsyncPacketSocket::Ptr server_socket_;
   EventTimer::Ptr server_timer_;
 
+  InetAddr local_addr_;
   TargetInfo target_info_;
   EventTimer::Ptr target_timer_;
   Connector::Ptr target_connector_;

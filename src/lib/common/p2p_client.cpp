@@ -46,7 +46,8 @@ static void PrintVersion() {
 P2PClient::P2PClient()
     : server_port_(0),
       type_(NT_UNKNOWN),
-      target_connected_(false) {
+      target_connected_(false),
+      local_addr_("0.0.0.0", 7001){
 
 }
 P2PClient::~P2PClient() {
@@ -105,7 +106,8 @@ bool P2PClient::Initialize(int argc, char *const *argv) {
   listener_.reset(new Listener(event_loop_));
   listener_->SignalAccept.connect(this, &P2PClient::OnListenAccept);
   listener_->SignalError.connect(this, &P2PClient::OnListenError);
-  if (listener_->Start(InetAddr("0.0.0.0", 7001))) {
+
+  if (listener_->Start(local_addr_)) {
     InetAddr listen_addr = listener_->GetAddr();
     LOG_INFO_FMT("Listen server on %s!", listen_addr.ToString().c_str());
   } else {
@@ -295,14 +297,7 @@ void P2PClient::ConnectTarget() {
 //    target_timer_->Start(100);
 //  }
 
-  const struct sockaddr_in *target_addr = target_info_.addr.GetAddr();
-  struct sockaddr_in local_addr;
-  socklen_t addr_len = sizeof(local_addr);
-
-  memset(&local_addr, 0, addr_len);
-  local_addr.sin_family = AF_INET;
-  local_addr.sin_addr.s_addr = 0;
-  local_addr.sin_port = htons(7001);
+  socklen_t addr_len = sizeof(local_addr_);
 
   int fd = INVALID_SOCKET;
   int enable = 1;
@@ -331,12 +326,12 @@ void P2PClient::ConnectTarget() {
     goto NEXT;
   }
 
-  if (-1 == bind(fd, (const struct sockaddr *) &local_addr, addr_len)) {
+  if (-1 == bind(fd, (const struct sockaddr *) local_addr_.GetAddr(), addr_len)) {
     LOG_ERROR("Bind local address failed!");
     goto NEXT;
   }
 
-  if (-1 == connect(fd, (const struct sockaddr *) target_addr, addr_len)) {
+  if (-1 == connect(fd, (const struct sockaddr *) target_info_.addr.GetAddr(), addr_len)) {
     LOG_ERROR("Connect target failed!");
     goto NEXT;
   }
