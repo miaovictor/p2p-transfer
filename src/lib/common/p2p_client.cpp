@@ -301,7 +301,7 @@ void P2PClient::ConnectTarget() {
   int fd = INVALID_SOCKET;
   int enable = 1;
 
-  LOG_ERROR("Try connect target...");
+  LOG_ERROR_FMT("Try connect target [%s], %s", target_info_.name.c_str(), target_info_.addr.ToString().c_str());
 
   fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (INVALID_SOCKET == fd) {
@@ -330,7 +330,7 @@ void P2PClient::ConnectTarget() {
   }
 
   if (-1 == connect(fd, (const struct sockaddr *) target_info_.addr.GetAddr(), addr_len)) {
-    LOG_ERROR("Connect target failed!");
+    LOG_ERROR_FMT("Connect target failed! errno: %d", errno);
     if (errno != ETIMEDOUT) {
       sleep(20);
     }
